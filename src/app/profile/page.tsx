@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { formatNumber, formatNaira } from "@/lib/utils";
+import { formatNumber, formatNaira, cn } from "@/lib/utils";
 import {
   BadgeCheck,
   Settings,
   Share2,
   Grid3X3,
+  Bookmark,
   Loader2,
   Camera,
   LogOut,
@@ -16,18 +17,28 @@ import {
 import type { Profile, Post } from "@/types/database";
 import Link from "next/link";
 
-export default function ProfilePage() {
+type Tab = "videos" | "saved";
+
+function ProfileContent() {
   const searchParams = useSearchParams();
   const usernameParam = searchParams.get("u");
-  const { user, profile: myProfile, loading: authLoading, signOut, refreshProfile } =
-    useAuth();
+  const {
+    user,
+    profile: myProfile,
+    loading: authLoading,
+    signOut,
+    refreshProfile,
+  } = useAuth();
   const router = useRouter();
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [savedPosts, setSavedPosts] = useState<Post[]>([]);
+  const [tab, setTab] = useState<Tab>("videos");
   const [isFollowing, setIsFollowing] = useState(false);
   const [isOwn, setIsOwn] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [savedLoading, setSavedLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -47,12 +58,9 @@ export default function ProfilePage() {
             setProfile(null);
           }
         } else if (myProfile) {
-          // Own profile
           setProfile(myProfile);
           setIsOwn(true);
-          const res = await fetch(
-            `/api/posts?user_id=${myProfile.id}`
-          );
+          const res = await fetch(`/api/posts?user_id=${myProfile.id}`);
           if (res.ok) {
             const data = await res.json();
             setPosts(data.posts ?? []);
@@ -62,13 +70,36 @@ export default function ProfilePage() {
           return;
         }
       } catch {
-        // keep empty
+        /* empty */
       } finally {
         setLoading(false);
       }
     }
     if (!authLoading) load();
   }, [usernameParam, myProfile, user, authLoading, router]);
+
+  // Load saved when tab opens (own profile only)
+  useEffect(() => {
+    if (!isOwn || tab !== "saved" || !user) return;
+    let cancelled = false;
+    (async () => {
+      setSavedLoading(true);
+      try {
+        const res = await fetch("/api/posts/saved");
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          setSavedPosts(data.posts ?? []);
+        }
+      } catch {
+        if (!cancelled) setSavedPosts([]);
+      } finally {
+        if (!cancelled) setSavedLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOwn, tab, user]);
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -106,9 +137,26 @@ export default function ProfilePage() {
     await fetch(`/api/profile/follow/${profile.id}`, { method });
   };
 
+  const handleUnsave = async (postId: string) => {
+    setSavedPosts((prev) => prev.filter((p) => p.id !== postId));
+    try {
+      const res = await fetch(`/api/posts/${postId}/save`, { method: "DELETE" });
+      if (!res.ok) {
+        // reload
+        const r = await fetch("/api/posts/saved");
+        if (r.ok) {
+          const data = await r.json();
+          setSavedPosts(data.posts ?? []);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
   if (loading || authLoading) {
     return (
-      <div className="flex h-[100dvh] items-center justify-center">
+      <div className="flex h-[100dvh] items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
@@ -117,7 +165,9 @@ export default function ProfilePage() {
   if (!profile) {
     return (
       <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 px-6 text-center">
-        <p className="text-white font-semibold">Profile not found</p>
+        <p className="font-display font-semibold text-foreground">
+          Profile not found
+        </p>
         <Link href="/" className="text-sm text-primary">
           Back to Feed
         </Link>
@@ -130,10 +180,11 @@ export default function ProfilePage() {
     0
   );
 
+  const gridPosts = tab === "videos" ? posts : savedPosts;
+
   return (
-    <div className="mx-auto max-w-lg pb-24">
-      {/* Cover */}
-      <div className="relative h-28 bg-gradient-to-br from-primary/40 via-purple-600/30 to-accent/20">
+    <div className="mx-auto max-w-lg pb-28 bg-background min-h-[100dvh]">
+      <div className="relative h-28 mesh-card">
         <div className="absolute -bottom-10 left-4">
           <div className="relative">
             {profile.avatar_url ? (
@@ -143,7 +194,7 @@ export default function ProfilePage() {
                 className="h-20 w-20 rounded-full border-4 border-background object-cover"
               />
             ) : (
-              <div className="h-20 w-20 rounded-full border-4 border-background bg-zinc-800 flex items-center justify-center text-2xl font-bold">
+              <div className="h-20 w-20 rounded-full border-4 border-background bg-surface flex items-center justify-center text-2xl font-display font-bold">
                 {profile.display_name.charAt(0).toUpperCase()}
               </div>
             )}
@@ -192,9 +243,11 @@ export default function ProfilePage() {
 
       <div className="px-4 pt-12">
         <div className="flex items-center gap-1.5">
-          <h1 className="text-lg font-bold">{profile.display_name}</h1>
+          <h1 className="text-lg font-display font-bold">
+            {profile.display_name}
+          </h1>
           {profile.is_verified && (
-            <BadgeCheck className="h-5 w-5 text-accent" />
+            <BadgeCheck className="h-5 w-5 text-mint" />
           )}
         </div>
         <p className="text-sm text-muted">@{profile.username}</p>
@@ -216,7 +269,7 @@ export default function ProfilePage() {
             <p className="text-xs text-muted">Videos</p>
           </div>
           <div>
-            <p className="font-bold text-success">{formatNaira(totalEarned)}</p>
+            <p className="font-bold text-gold">{formatNaira(totalEarned)}</p>
             <p className="text-xs text-muted">Earned</p>
           </div>
         </div>
@@ -228,52 +281,80 @@ export default function ProfilePage() {
           {!isOwn && user && (
             <button
               onClick={handleFollow}
-              className={`rounded-full px-4 py-1.5 text-xs font-semibold ${
+              className={cn(
+                "rounded-full px-4 py-1.5 text-xs font-semibold",
                 isFollowing
-                  ? "border border-white/20 text-white"
+                  ? "border border-white/20 text-foreground"
                   : "bg-primary text-white"
-              }`}
+              )}
             >
               {isFollowing ? "Following" : "Follow"}
             </button>
           )}
+        </div>
+
+        {/* Tabs */}
+        <div className="mt-8 flex border-b border-white/[0.08]">
+          <button
+            type="button"
+            onClick={() => setTab("videos")}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold border-b-2 transition-colors",
+              tab === "videos"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted"
+            )}
+          >
+            <Grid3X3 className="h-4 w-4" />
+            Videos
+          </button>
           {isOwn && (
-            <Link
-              href="/login"
-              className="text-xs text-muted underline"
-              onClick={(e) => {
-                if (user) e.preventDefault();
-              }}
+            <button
+              type="button"
+              onClick={() => setTab("saved")}
+              className={cn(
+                "flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold border-b-2 transition-colors",
+                tab === "saved"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted"
+              )}
             >
-              {user ? "" : "Log in to edit"}
-            </Link>
+              <Bookmark className="h-4 w-4" />
+              Saved
+            </button>
           )}
         </div>
 
-        {/* Videos grid */}
-        <div className="mt-8">
-          <div className="flex items-center gap-2 mb-3">
-            <Grid3X3 className="h-4 w-4 text-muted" />
-            <h2 className="text-sm font-semibold">Series & Videos</h2>
-          </div>
-          {posts.length === 0 ? (
-            <p className="text-sm text-muted py-8 text-center">
-              No videos yet.
-              {isOwn && (
+        {/* Grid */}
+        <div className="mt-3">
+          {tab === "saved" && savedLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : gridPosts.length === 0 ? (
+            <p className="text-sm text-muted py-10 text-center">
+              {tab === "saved" ? (
+                "No saved posts yet. Bookmark videos on the feed."
+              ) : (
                 <>
-                  {" "}
-                  <Link href="/upload" className="text-primary">
-                    Upload one
-                  </Link>
+                  No videos yet.
+                  {isOwn && (
+                    <>
+                      {" "}
+                      <Link href="/upload" className="text-primary">
+                        Upload one
+                      </Link>
+                    </>
+                  )}
                 </>
               )}
             </p>
           ) : (
             <div className="grid grid-cols-3 gap-1">
-              {posts.map((post) => (
+              {gridPosts.map((post) => (
                 <div
                   key={post.id}
-                  className="relative aspect-[9/14] overflow-hidden rounded-lg bg-zinc-900"
+                  className="relative aspect-[9/14] overflow-hidden rounded-lg bg-surface group"
                 >
                   <img
                     src={post.thumbnail_url}
@@ -285,6 +366,16 @@ export default function ProfilePage() {
                       {formatNumber(post.views_count)} views
                     </p>
                   </div>
+                  {tab === "saved" && (
+                    <button
+                      type="button"
+                      onClick={() => handleUnsave(post.id)}
+                      className="absolute top-1.5 right-1.5 rounded-full bg-black/55 p-1.5 backdrop-blur-sm opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+                      title="Unsave"
+                    >
+                      <Bookmark className="h-3.5 w-3.5 fill-gold text-gold" />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -292,5 +383,19 @@ export default function ProfilePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-[100dvh] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <ProfileContent />
+    </Suspense>
   );
 }

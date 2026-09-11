@@ -45,15 +45,13 @@ export default function WalletPage() {
       const res = await fetch("/api/wallet");
       if (res.status === 401) {
         setData(null);
-        setError(null);
         return;
       }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || "Failed to load wallet");
       }
-      const json = await res.json();
-      setData(json);
+      setData(await res.json());
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load wallet");
       setData(null);
@@ -74,7 +72,7 @@ export default function WalletPage() {
 
   if (authLoading || loading) {
     return (
-      <div className="flex h-[100dvh] items-center justify-center">
+      <div className="flex h-[100dvh] items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
@@ -82,12 +80,16 @@ export default function WalletPage() {
 
   if (!user) {
     return (
-      <div className="flex h-[100dvh] flex-col items-center justify-center gap-4 px-6 text-center">
-        <Wallet className="h-10 w-10 text-muted" />
-        <p className="text-white font-semibold">Log in to view your wallet</p>
+      <div className="flex h-[100dvh] flex-col items-center justify-center gap-4 px-6 text-center bg-background">
+        <div className="h-14 w-14 rounded-2xl bg-primary/15 flex items-center justify-center">
+          <Wallet className="h-7 w-7 text-primary" />
+        </div>
+        <p className="font-display font-semibold text-lg text-foreground">
+          Log in to view your wallet
+        </p>
         <Link
           href="/login"
-          className="rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-white"
+          className="rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/25"
         >
           Log in
         </Link>
@@ -98,11 +100,13 @@ export default function WalletPage() {
   if (error) {
     return (
       <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 px-6 text-center">
-        <p className="text-white font-semibold">Couldn&apos;t load wallet</p>
+        <p className="font-display font-semibold text-foreground">
+          Couldn&apos;t load wallet
+        </p>
         <p className="text-sm text-muted max-w-xs">{error}</p>
         <button
           onClick={load}
-          className="mt-2 rounded-full border border-white/20 px-5 py-2 text-sm font-semibold text-white"
+          className="mt-2 rounded-full border border-white/15 px-5 py-2 text-sm font-semibold"
         >
           Try again
         </button>
@@ -119,129 +123,121 @@ export default function WalletPage() {
   const usdcApprox = balanceNgn > 0 ? (balanceNgn / 1600).toFixed(2) : "0.00";
 
   return (
-    <div className="mx-auto max-w-lg px-4 pt-4 pb-28">
+    <div className="mx-auto max-w-lg px-4 pt-6 pb-28 bg-background min-h-[100dvh]">
       <header className="mb-6">
-        <h1 className="text-xl font-bold flex items-center gap-2">
-          <Wallet className="h-5 w-5 text-primary" />
+        <h1 className="text-2xl font-display font-bold flex items-center gap-2 text-foreground">
+          <Wallet className="h-6 w-6 text-primary" />
           Wallet
         </h1>
-        <p className="text-xs text-muted mt-0.5">
-          Earnings in NGN · Credits · Solana
-        </p>
+        <p className="text-xs text-muted mt-1">Earnings · Credits · Solana</p>
       </header>
 
-      {/* Balance cards */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
-        <div className="rounded-2xl bg-card border border-border p-4">
-          <p className="text-xs text-muted mb-1">Available Balance</p>
-          <p className="text-xl font-bold">{formatNaira(balanceNgn)}</p>
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="mesh-card-gold rounded-2xl p-4">
+          <p className="text-xs text-muted mb-1">Available</p>
+          <p className="text-xl font-display font-bold text-gold">
+            {formatNaira(balanceNgn)}
+          </p>
           <p className="text-[11px] text-muted mt-1">≈ ${usdcApprox} USDC</p>
         </div>
-        <div className="rounded-2xl bg-card border border-border p-4">
+        <div className="mesh-card rounded-2xl p-4">
           <p className="text-xs text-muted mb-1">Credits</p>
-          <p className="text-xl font-bold text-primary">{credits}</p>
-          <p className="text-[11px] text-muted mt-1">for Genny Studio</p>
+          <p className="text-xl font-display font-bold text-gold">{credits}</p>
+          <p className="text-[11px] text-muted mt-1">Genny Studio</p>
         </div>
       </div>
 
-      {/* Total earned */}
-      <div className="rounded-2xl bg-gradient-to-br from-primary/20 to-accent/10 border border-primary/30 p-4 mb-6">
-        <p className="text-xs text-muted mb-1">Total Earned (All time)</p>
-        <p className="text-2xl font-bold">{formatNaira(totalEarned)}</p>
-        <p className="text-xs text-muted mt-1">
-          From {formatNumber(totalViews)} views across {postsCount} video
+      <div className="mesh-card rounded-2xl p-5 mb-6">
+        <p className="text-xs text-muted mb-1">Total earned</p>
+        <p className="text-3xl font-display font-bold text-foreground">
+          {formatNaira(totalEarned)}
+        </p>
+        <p className="text-xs text-muted mt-2">
+          {formatNumber(totalViews)} views · {postsCount} video
           {postsCount === 1 ? "" : "s"}
         </p>
       </div>
 
-      {/* Actions */}
       <div className="grid grid-cols-2 gap-3 mb-8">
         <button
           disabled={balanceNgn <= 0}
-          className="flex items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-40"
+          className="flex items-center justify-center gap-2 rounded-full bg-primary py-3 text-sm font-semibold text-white disabled:opacity-40 shadow-lg shadow-primary/20"
         >
           <ArrowDownLeft className="h-4 w-4" />
           Withdraw
         </button>
-        <button className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card py-3 text-sm font-semibold">
-          <ArrowUpRight className="h-4 w-4" />
+        <button className="flex items-center justify-center gap-2 rounded-full glass py-3 text-sm font-semibold text-foreground">
+          <ArrowUpRight className="h-4 w-4 text-gold" />
           Buy Credits
         </button>
       </div>
 
-      {/* Solana */}
       <section className="mb-8">
-        <h2 className="text-sm font-semibold mb-3">Solana Wallet</h2>
+        <h2 className="text-sm font-display font-semibold mb-3">Solana</h2>
         {walletAddress ? (
-          <div className="rounded-2xl border border-border bg-card p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-purple-500 to-cyan-400" />
-              <div>
-                <p className="text-sm font-medium">Connected</p>
-                <p className="text-xs text-muted font-mono">
-                  {walletAddress.slice(0, 4)}…{walletAddress.slice(-4)}
-                </p>
-              </div>
+          <div className="glass rounded-2xl p-4 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-gold" />
+            <div>
+              <p className="text-sm font-medium">Connected</p>
+              <p className="text-xs text-muted font-mono">
+                {walletAddress.slice(0, 4)}…{walletAddress.slice(-4)}
+              </p>
             </div>
           </div>
         ) : (
-          <button className="w-full rounded-2xl border border-dashed border-primary/50 bg-primary/5 py-4 text-sm font-semibold text-primary flex items-center justify-center gap-2">
+          <button className="w-full rounded-2xl border border-dashed border-primary/40 bg-primary/5 py-4 text-sm font-semibold text-primary flex items-center justify-center gap-2">
             <Zap className="h-4 w-4" />
             Connect Solana Wallet
           </button>
         )}
-        <p className="text-[11px] text-muted mt-2 text-center">
-          Pay with SOL / USDC · Instant settlement · Low fees
-        </p>
       </section>
 
-      {/* Credit packs (display only until Solana Pay) */}
       <section>
-        <h2 className="text-sm font-semibold mb-3">Buy Credits</h2>
+        <h2 className="text-sm font-display font-semibold mb-3">Buy Credits</h2>
         <div className="space-y-2.5">
           {CREDIT_PACKS.map((pack) => (
             <div
               key={pack.id}
               className={cn(
-                "flex items-center justify-between rounded-2xl border p-4",
-                pack.popular
-                  ? "border-primary/60 bg-primary/5"
-                  : "border-border bg-card"
+                "flex items-center justify-between rounded-2xl p-4 glass",
+                pack.popular && "ring-1 ring-gold/40"
               )}
             >
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="font-bold">{pack.credits} credits</span>
+                  <span className="font-display font-bold text-foreground">
+                    {pack.credits} credits
+                  </span>
                   {pack.popular && (
-                    <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                    <span className="rounded-full bg-gold/20 px-2 py-0.5 text-[10px] font-semibold text-gold">
                       Popular
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-muted mt-0.5">{pack.label} pack</p>
+                <p className="text-xs text-muted mt-0.5">{pack.label}</p>
               </div>
               <div className="text-right">
-                <p className="font-semibold text-primary">
+                <p className="font-semibold text-gold">
                   {formatNaira(pack.priceNgn)}
                 </p>
-                <p className="text-[11px] text-muted">or ${pack.priceUsdc} USDC</p>
+                <p className="text-[11px] text-muted">${pack.priceUsdc} USDC</p>
               </div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Verification upsell */}
-      <section className="mt-8 rounded-2xl border border-accent/30 bg-accent/5 p-4">
+      <section className="mt-8 mesh-card rounded-2xl p-4">
         <div className="flex items-start gap-3">
-          <BadgeCheck className="h-5 w-5 text-accent shrink-0 mt-0.5" />
+          <BadgeCheck className="h-5 w-5 text-mint shrink-0 mt-0.5" />
           <div>
-            <h3 className="font-semibold text-sm">Get Verified · Earn more</h3>
+            <h3 className="font-display font-semibold text-sm">
+              Get Verified · Earn more
+            </h3>
             <p className="text-xs text-muted mt-1 leading-relaxed">
-              Pro creators get higher CPM, wider reach, and priority in the feed.
-              From ₦7,500/month.
+              Higher CPM, wider reach, priority in the feed. From ₦7,500/month.
             </p>
-            <button className="mt-3 text-xs font-semibold text-accent flex items-center gap-1">
+            <button className="mt-3 text-xs font-semibold text-mint flex items-center gap-1">
               View plans <ExternalLink className="h-3 w-3" />
             </button>
           </div>

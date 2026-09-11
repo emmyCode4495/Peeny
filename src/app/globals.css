@@ -1,33 +1,36 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0a0a0b;
-  --foreground: #fafafa;
-  --card: #141416;
-  --card-hover: #1c1c1f;
-  --border: #27272a;
-  --primary: #8b5cf6;
+  --background: #0d0b10;
+  --foreground: #f4f0f7;
+  --surface: #17131a;
+  --surface-elevated: #1f1a24;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --primary: #ff5a36;
   --primary-foreground: #ffffff;
-  --muted: #a1a1aa;
-  --accent: #22d3ee;
-  --success: #22c55e;
-  --danger: #ef4444;
+  --gold: #ffc23c;
+  --mint: #33e6b0;
+  --danger: #ff3b57;
+  --muted: #9b92a8;
+  --glass: rgba(23, 19, 26, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.1);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-hover: var(--card-hover);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
   --color-border: var(--border);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
-  --color-muted: var(--muted);
-  --color-accent: var(--accent);
-  --color-success: var(--success);
+  --color-gold: var(--gold);
+  --color-mint: var(--mint);
   --color-danger: var(--danger);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-muted: var(--muted);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-sora);
 }
 
 * {
@@ -35,7 +38,8 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   margin: 0;
   padding: 0;
@@ -43,13 +47,19 @@ html, body {
 }
 
 body {
-  background: #000;
+  background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-inter), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Hide scrollbar but keep scroll */
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--font-sora), var(--font-inter), system-ui, sans-serif;
+}
+
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -61,7 +71,57 @@ body {
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
-
 .safe-top {
   padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Glass surfaces */
+.glass {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.glass-strong {
+  background: rgba(23, 19, 26, 0.88);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+}
+
+/* Gradient mesh cards */
+.mesh-card {
+  background:
+    radial-gradient(ellipse 80% 60% at 10% 0%, rgba(255, 90, 54, 0.22), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 90% 20%, rgba(255, 194, 60, 0.12), transparent 50%),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(51, 230, 176, 0.08), transparent 45%),
+    var(--surface);
+  border: 1px solid var(--glass-border);
+}
+
+.mesh-card-gold {
+  background:
+    radial-gradient(ellipse 90% 70% at 0% 0%, rgba(255, 194, 60, 0.2), transparent 50%),
+    radial-gradient(ellipse 60% 50% at 100% 100%, rgba(255, 90, 54, 0.15), transparent 50%),
+    var(--surface);
+  border: 1px solid rgba(255, 194, 60, 0.2);
+}
+
+/* Floating pill nav */
+.nav-pill {
+  background: rgba(23, 19, 26, 0.85);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 90, 54, 0.06);
+}
+
+/* Grouped action rail on feed */
+.action-rail {
+  background: rgba(13, 11, 16, 0.55);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
 }

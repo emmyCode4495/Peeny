@@ -15,28 +15,29 @@ import {
   ChevronUp,
   ChevronDown,
   Loader2,
-  X,
-  Send,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useFeed } from "@/hooks/useFeed";
 import { useEngagement } from "@/hooks/useEngagement";
 import type { Post } from "@/types/database";
+import { FeedVideo } from "@/components/FeedVideo";
+import { CommentsSheet } from "@/components/CommentsSheet";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 export default function FeedPage() {
   const { posts, loading, error, toggleLike, refresh } = useFeed();
   const { recordView, toggleSave, recordShare } = useEngagement();
+  const isMobile = useIsMobile();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [muted, setMuted] = useState(true);
   const [savedMap, setSavedMap] = useState<Record<string, boolean>>({});
+  const [userPaused, setUserPaused] = useState(false);
+  const [heartBurst, setHeartBurst] = useState(false);
+  const lastTap = useRef(0);
   const [toast, setToast] = useState<string | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
-  const [commentText, setCommentText] = useState("");
-  const [comments, setComments] = useState<
-    { id: string; body: string; profile?: { username?: string; display_name?: string } }[]
-  >([]);
-  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsPostId, setCommentsPostId] = useState<string | null>(null);
 
   const mobileRef = useRef<HTMLDivElement>(null);
   const desktopRef = useRef<HTMLDivElement>(null);
@@ -65,24 +66,12 @@ export default function FeedPage() {
     };
   }, [currentIndex, posts, recordView]);
 
-  // Play active / pause others
+  // New slide → auto-play (clear user pause)
   useEffect(() => {
-    videoRefs.current.forEach((video, i) => {
-      if (i === currentIndex) {
-        video.muted = muted;
-        video.playsInline = true;
-        const p = video.play();
-        if (p) p.catch(() => {});
-      } else {
-        video.pause();
-        try {
-          video.currentTime = 0;
-        } catch {
-          /* ignore */
-        }
-      }
-    });
-  }, [currentIndex, muted, posts]);
+    setUserPaused(false);
+  }, [currentIndex]);
+
+  // Play/pause handled inside FeedVideo
 
   // Mobile intersection observer
   useEffect(() => {
@@ -192,8 +181,29 @@ export default function FeedPage() {
     else videoRefs.current.delete(index);
   };
 
-  const handleLike = (post: Post) => {
-    toggleLike(post.id, !!post.liked_by_me);
+  const handleLike = (postId: string) => {
+    toggleLike(postId);
+  };
+
+  const handleVideoTap = (postId: string) => {
+    const now = Date.now();
+    if (now - lastTap.current < 280) {
+      // Double tap → like
+      lastTap.current = 0;
+      if (!posts.find((p) => p.id === postId)?.liked_by_me) {
+        toggleLike(postId);
+      }
+      setHeartBurst(true);
+      setTimeout(() => setHeartBurst(false), 600);
+      return;
+    }
+    lastTap.current = now;
+    setTimeout(() => {
+      if (lastTap.current === now) {
+        // Single tap → pause / play
+        setUserPaused((p) => !p);
+      }
+    }, 280);
   };
 
   const handleSave = async (postId: string) => {
@@ -221,48 +231,9 @@ export default function FeedPage() {
     }
   };
 
-  const openComments = async (postId: string) => {
+  const openComments = (postId: string) => {
+    setCommentsPostId(postId);
     setCommentsOpen(true);
-    setCommentsLoading(true);
-    setCommentText("");
-    try {
-      const res = await fetch(`/api/posts/${postId}/comments`);
-      if (res.ok) {
-        const data = await res.json();
-        setComments(data.comments ?? []);
-      } else {
-        setComments([]);
-      }
-    } catch {
-      setComments([]);
-    } finally {
-      setCommentsLoading(false);
-    }
-  };
-
-  const submitComment = async () => {
-    if (!current || !commentText.trim()) return;
-    try {
-      const res = await fetch(`/api/posts/${current.id}/comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: commentText.trim() }),
-      });
-      if (res.status === 401) {
-        showToast("Log in to comment");
-        return;
-      }
-      if (!res.ok) {
-        showToast("Could not post comment");
-        return;
-      }
-      const data = await res.json();
-      setComments((c) => [data.comment, ...c]);
-      setCommentText("");
-      showToast("Comment posted");
-    } catch {
-      showToast("Could not post comment");
-    }
   };
 
   if (loading) {
@@ -307,15 +278,16 @@ export default function FeedPage() {
     <div className="h-[100dvh] w-full bg-black overflow-hidden relative">
       {/* Toast */}
       {toast && (
-        <div className="fixed top-16 left-1/2 z-[100] -translate-x-1/2 rounded-full bg-white/95 px-4 py-2 text-sm font-medium text-black shadow-lg">
+        <div className="fixed top-16 left-1/2 z-[100] -translate-x-1/2 rounded-full bg-surface border border-white/10 px-4 py-2 text-sm font-medium text-foreground shadow-xl">
           {toast}
         </div>
       )}
 
-      {/* ========== MOBILE ========== */}
+      {/* ========== MOBILE only (unmounted on desktop to avoid double audio) ========== */}
+      {isMobile && (
       <div
         ref={mobileRef}
-        className="lg:hidden h-full w-full overflow-y-scroll snap-y snap-mandatory no-scrollbar"
+        className="h-full w-full overflow-y-scroll snap-y snap-mandatory no-scrollbar"
         style={{
           scrollSnapType: "y mandatory",
           WebkitOverflowScrolling: "touch",
@@ -330,26 +302,44 @@ export default function FeedPage() {
             data-index={i}
             className="relative h-[100dvh] w-full snap-start snap-always shrink-0 bg-black"
           >
-            {/* VIDEO — full bleed, no covering image */}
-            <video
-              ref={(el) => setVideoRef(i, el)}
+            <FeedVideo
               src={post.video_url}
               poster={post.thumbnail_url}
-              className="absolute inset-0 z-0 h-full w-full object-cover"
-              loop
-              playsInline
+              active={i === currentIndex}
               muted={muted}
-              preload={i === currentIndex ? "auto" : "metadata"}
-              // Hide native controls; poster only until first frame
-              controls={false}
+              userPaused={i === currentIndex && userPaused}
             />
+            {/* Tap layer: single = pause, double = like */}
+            <button
+              type="button"
+              aria-label="Tap to pause, double-tap to like"
+              className="absolute inset-0 z-[8] bg-transparent"
+              onClick={(e) => {
+                e.preventDefault();
+                handleVideoTap(post.id);
+              }}
+            />
+            {i === currentIndex && heartBurst && (
+              <div className="absolute inset-0 z-[9] flex items-center justify-center pointer-events-none">
+                <Heart className="h-24 w-24 fill-primary text-primary animate-ping opacity-80" />
+              </div>
+            )}
+            {i === currentIndex && userPaused && (
+              <div className="absolute inset-0 z-[9] flex items-center justify-center pointer-events-none">
+                <div className="rounded-full bg-black/45 p-4 backdrop-blur-sm">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="white">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                </div>
+              </div>
+            )}
 
-            {/* Gradients only — pointer-events none so they don't block */}
-            <div className="absolute inset-0 z-[1] bg-gradient-to-b from-black/40 via-transparent to-black/70 pointer-events-none" />
+            {/* Light gradients only — never cover the whole frame in black */}
+            <div className="absolute inset-0 z-[5] bg-gradient-to-b from-black/30 via-transparent to-black/50 pointer-events-none" />
 
             {/* Top bar */}
             <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 pt-3 safe-top">
-              <span className="text-sm font-semibold text-white/90">Peeny</span>
+              <span className="text-sm font-display font-bold text-white tracking-tight">Peeny</span>
               <button
                 type="button"
                 onClick={() => setMuted((m) => !m)}
@@ -363,8 +353,8 @@ export default function FeedPage() {
               </button>
             </div>
 
-            {/* Actions */}
-            <div className="absolute right-3 bottom-36 z-20 flex flex-col items-center gap-5">
+            {/* Grouped glass action rail */}
+            <div className="absolute right-2.5 bottom-36 z-20 action-rail rounded-full py-3 px-1.5 flex flex-col items-center gap-4">
               <Link
                 href={`/profile?u=${post.profile?.username}`}
                 className="relative"
@@ -381,7 +371,7 @@ export default function FeedPage() {
 
               <button
                 type="button"
-                onClick={() => handleLike(post)}
+                onClick={() => handleLike(post.id)}
                 className="flex flex-col items-center gap-0.5"
               >
                 <Heart
@@ -446,14 +436,14 @@ export default function FeedPage() {
                   @{post.profile?.username}
                 </span>
                 {post.profile?.is_verified && (
-                  <BadgeCheck className="h-4 w-4 text-accent" />
+                  <BadgeCheck className="h-4 w-4 text-mint" />
                 )}
               </Link>
               <p className="text-white text-sm leading-snug line-clamp-2 mb-2">
                 {post.title}
               </p>
-              <div className="inline-flex items-center gap-1.5 rounded-full bg-success/20 border border-success/40 px-2.5 py-1 mb-2">
-                <span className="text-xs font-semibold text-success">
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-gold/15 border border-gold/35 px-2.5 py-1 mb-2">
+                <span className="text-xs font-semibold text-gold">
                   Earned {formatNaira(Number(post.earnings_ngn))}
                 </span>
               </div>
@@ -468,29 +458,49 @@ export default function FeedPage() {
           </section>
         ))}
       </div>
+      )}
 
-      {/* ========== DESKTOP ========== */}
+      {/* ========== DESKTOP only ========== */}
+      {!isMobile && (
       <div
         ref={desktopRef}
-        className="hidden lg:flex flex-1 items-center justify-center gap-6 px-6 h-full"
+        className="flex flex-1 items-center justify-center gap-6 px-6 h-full"
       >
         <div className="relative h-[min(860px,92vh)] w-[min(420px,28vw)] max-w-[420px] rounded-2xl overflow-hidden bg-black shadow-2xl ring-1 ring-white/10">
           {current && (
             <>
-              <video
+              <FeedVideo
                 key={current.id}
-                ref={(el) => setVideoRef(currentIndex, el)}
                 src={current.video_url}
                 poster={current.thumbnail_url}
-                className="absolute inset-0 z-0 h-full w-full object-cover"
-                loop
-                playsInline
+                active={true}
                 muted={muted}
-                autoPlay
-                preload="auto"
-                controls={false}
+                userPaused={userPaused}
               />
-              <div className="absolute inset-0 z-[1] bg-gradient-to-b from-black/40 via-transparent to-black/60 pointer-events-none" />
+              <button
+                type="button"
+                aria-label="Tap to pause, double-tap to like"
+                className="absolute inset-0 z-[8] bg-transparent"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleVideoTap(current.id);
+                }}
+              />
+              {heartBurst && (
+                <div className="absolute inset-0 z-[9] flex items-center justify-center pointer-events-none">
+                  <Heart className="h-24 w-24 fill-primary text-primary animate-ping opacity-80" />
+                </div>
+              )}
+              {userPaused && (
+                <div className="absolute inset-0 z-[9] flex items-center justify-center pointer-events-none">
+                  <div className="rounded-full bg-black/45 p-4 backdrop-blur-sm">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="white">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  </div>
+                </div>
+              )}
+              <div className="absolute inset-0 z-[5] bg-gradient-to-b from-black/25 via-transparent to-black/45 pointer-events-none" />
 
               <button
                 type="button"
@@ -513,14 +523,14 @@ export default function FeedPage() {
                     @{current.profile?.username}
                   </span>
                   {current.profile?.is_verified && (
-                    <BadgeCheck className="h-4 w-4 text-accent" />
+                    <BadgeCheck className="h-4 w-4 text-mint" />
                   )}
                 </Link>
                 <p className="text-white text-sm line-clamp-2 mb-2">
                   {current.title}
                 </p>
-                <div className="inline-flex rounded-full bg-success/20 border border-success/40 px-2.5 py-0.5 mb-2">
-                  <span className="text-[11px] font-semibold text-success">
+                <div className="inline-flex rounded-full bg-gold/15 border border-gold/35 px-2.5 py-0.5 mb-2">
+                  <span className="text-[11px] font-semibold text-gold">
                     Earned {formatNaira(Number(current.earnings_ngn))}
                   </span>
                 </div>
@@ -532,7 +542,7 @@ export default function FeedPage() {
           )}
         </div>
 
-        <div className="flex flex-col items-center gap-5 py-4">
+        <div className="action-rail rounded-full py-4 px-2 flex flex-col items-center gap-4">
           {current?.profile && (
             <Link
               href={`/profile?u=${current.profile.username}`}
@@ -563,7 +573,7 @@ export default function FeedPage() {
             label={
               current ? formatNumber(Math.max(0, current.likes_count)) : "0"
             }
-            onClick={() => current && handleLike(current)}
+            onClick={() => current && handleLike(current.id)}
           />
           <ActionBtn
             icon={<MessageCircle className="h-7 w-7 text-white" />}
@@ -617,68 +627,19 @@ export default function FeedPage() {
           </p>
         </div>
       </div>
-
-      {/* Comments sheet */}
-      {commentsOpen && (
-        <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/60">
-          <button
-            type="button"
-            className="absolute inset-0"
-            aria-label="Close"
-            onClick={() => setCommentsOpen(false)}
-          />
-          <div className="relative w-full max-w-lg rounded-t-2xl bg-zinc-900 border-t border-white/10 p-4 pb-8 max-h-[70vh] flex flex-col">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-white">Comments</h3>
-              <button
-                type="button"
-                onClick={() => setCommentsOpen(false)}
-                className="p-1 rounded-full hover:bg-white/10"
-              >
-                <X className="h-5 w-5 text-white" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-3 min-h-[120px]">
-              {commentsLoading ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted" />
-                </div>
-              ) : comments.length === 0 ? (
-                <p className="text-sm text-muted text-center py-8">
-                  No comments yet. Be the first.
-                </p>
-              ) : (
-                comments.map((c) => (
-                  <div key={c.id} className="text-sm">
-                    <span className="font-semibold text-white">
-                      @{c.profile?.username || "user"}
-                    </span>{" "}
-                    <span className="text-white/80">{c.body}</span>
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="mt-3 flex gap-2">
-              <input
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                placeholder="Add a comment…"
-                className="flex-1 rounded-full bg-zinc-800 border border-white/10 px-4 py-2.5 text-sm text-white placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-primary/50"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") submitComment();
-                }}
-              />
-              <button
-                type="button"
-                onClick={submitComment}
-                className="rounded-full bg-primary p-2.5 text-white"
-              >
-                <Send className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        </div>
       )}
+
+      <CommentsSheet
+        postId={commentsPostId || current?.id || ""}
+        open={commentsOpen && !!commentsPostId}
+        onClose={() => {
+          setCommentsOpen(false);
+          setCommentsPostId(null);
+        }}
+        onCountChange={() => {
+          /* count updates on next feed refresh */
+        }}
+      />
     </div>
   );
 }

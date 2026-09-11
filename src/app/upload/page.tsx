@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Upload, Film, Tag, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  extractVideoThumbnail,
+  compressThumbnailFile,
+  formatBytes,
+} from "@/lib/media";
 import Link from "next/link";
 import type { PostCategory } from "@/types/database";
 
@@ -31,6 +36,8 @@ export default function UploadPage() {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [thumbFile, setThumbFile] = useState<File | null>(null);
   const [thumbPreview, setThumbPreview] = useState<string | null>(null);
+  const [thumbSize, setThumbSize] = useState<string | null>(null);
+  const [preparingThumb, setPreparingThumb] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -49,22 +56,45 @@ export default function UploadPage() {
     );
   }
 
-  const onThumbChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setThumbFile(f);
-    setThumbPreview(URL.createObjectURL(f));
-  };
-
-  const onVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onVideoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
     setVideoFile(f);
-    // Auto-generate a simple preview from video if no thumb
-    if (!thumbPreview) {
-      const url = URL.createObjectURL(f);
-      // For MVP we still need a thumbnail image – user should pick one
-      // or we could extract a frame later
+    setError(null);
+    setPreparingThumb(true);
+    try {
+      // Auto-generate small thumbnail from video frame
+      const { blob, previewUrl } = await extractVideoThumbnail(f);
+      if (thumbPreview) URL.revokeObjectURL(thumbPreview);
+      setThumbPreview(previewUrl);
+      const file = new File([blob], "thumbnail.jpg", { type: "image/jpeg" });
+      setThumbFile(file);
+      setThumbSize(formatBytes(blob.size));
+    } catch (err) {
+      console.warn("Auto thumbnail failed", err);
+      setError(
+        "Could not auto-generate thumbnail. Please pick an image manually."
+      );
+    } finally {
+      setPreparingThumb(false);
+    }
+  };
+
+  const onThumbChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setPreparingThumb(true);
+    setError(null);
+    try {
+      const compressed = await compressThumbnailFile(f);
+      if (thumbPreview) URL.revokeObjectURL(thumbPreview);
+      setThumbFile(compressed);
+      setThumbPreview(URL.createObjectURL(compressed));
+      setThumbSize(formatBytes(compressed.size));
+    } catch {
+      setError("Failed to compress thumbnail");
+    } finally {
+      setPreparingThumb(false);
     }
   };
 
@@ -75,7 +105,7 @@ export default function UploadPage() {
       body: JSON.stringify({
         type,
         filename: file.name,
-        contentType: file.type,
+        contentType: file.type || (type === "video" ? "video/mp4" : "image/jpeg"),
       }),
     });
     if (!res.ok) {
@@ -92,7 +122,7 @@ export default function UploadPage() {
   async function uploadToSignedUrl(signedUrl: string, file: File) {
     const res = await fetch(signedUrl, {
       method: "PUT",
-      headers: { "Content-Type": file.type },
+      headers: { "Content-Type": file.type || "application/octet-stream" },
       body: file,
     });
     if (!res.ok) throw new Error("Upload to storage failed");
@@ -103,7 +133,11 @@ export default function UploadPage() {
       setError("Title and video are required");
       return;
     }
-    // Thumbnail: use provided or a placeholder
+    if (!thumbFile) {
+      setError("Thumbnail is required (auto-generated or pick one)");
+      return;
+    }
+
     setUploading(true);
     setError(null);
 
@@ -112,15 +146,9 @@ export default function UploadPage() {
       const videoSigned = await getSignedUrl("video", videoFile);
       await uploadToSignedUrl(videoSigned.signed_url, videoFile);
 
-      let thumbnailUrl = videoSigned.public_url; // fallback
-      if (thumbFile) {
-        setProgress("Uploading thumbnail…");
-        const thumbSigned = await getSignedUrl("thumbnail", thumbFile);
-        await uploadToSignedUrl(thumbSigned.signed_url, thumbFile);
-        thumbnailUrl = thumbSigned.public_url;
-      } else if (thumbPreview) {
-        thumbnailUrl = thumbPreview;
-      }
+      setProgress("Uploading thumbnail…");
+      const thumbSigned = await getSignedUrl("thumbnail", thumbFile);
+      await uploadToSignedUrl(thumbSigned.signed_url, thumbFile);
 
       setProgress("Publishing…");
       const res = await fetch("/api/posts", {
@@ -130,7 +158,7 @@ export default function UploadPage() {
           title: title.trim(),
           description: description.trim(),
           video_url: videoSigned.public_url,
-          thumbnail_url: thumbnailUrl,
+          thumbnail_url: thumbSigned.public_url,
           category,
           is_ai_generated: isAI,
           duration_seconds: 0,
@@ -156,7 +184,7 @@ export default function UploadPage() {
   return (
     <div className="mx-auto max-w-lg px-4 pt-4 pb-28">
       <header className="mb-6">
-        <h1 className="text-xl font-bold flex items-center gap-2">
+        <h1 className="text-2xl font-display font-bold flex items-center gap-2">
           <Upload className="h-5 w-5 text-primary" />
           Upload
         </h1>
@@ -167,47 +195,61 @@ export default function UploadPage() {
 
       {/* Video picker */}
       <div
-        onClick={() => videoRef.current?.click()}
-        className="mb-4 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border bg-card py-10 cursor-pointer hover:border-primary/50 transition-colors"
+        onClick={() => !preparingThumb && videoRef.current?.click()}
+        className="mb-4 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-white/[0.08] bg-surface py-10 cursor-pointer hover:border-primary/50 transition-colors"
       >
         <div className="rounded-full bg-zinc-800 p-4 mb-3">
-          <Film className="h-8 w-8 text-muted" />
+          {preparingThumb ? (
+            <Loader2 className="h-8 w-8 text-primary animate-spin" />
+          ) : (
+            <Film className="h-8 w-8 text-muted" />
+          )}
         </div>
         <p className="text-sm font-medium">
-          {videoFile ? videoFile.name : "Choose video"}
+          {preparingThumb
+            ? "Generating thumbnail…"
+            : videoFile
+              ? videoFile.name
+              : "Choose video"}
         </p>
-        <p className="text-xs text-muted mt-1">MP4, WebM · max ~500MB</p>
+        <p className="text-xs text-muted mt-1">MP4, WebM · thumbnail auto-created</p>
         <input
           ref={videoRef}
           type="file"
-          accept="video/mp4,video/webm"
+          accept="video/mp4,video/webm,video/*"
           className="hidden"
           onChange={onVideoChange}
         />
       </div>
 
-      {/* Thumbnail */}
+      {/* Thumbnail preview (static, compressed) */}
       <div className="mb-4">
         <label className="text-xs font-medium text-muted mb-1.5 block">
-          Thumbnail (recommended)
+          Thumbnail (auto from video · compressed)
         </label>
         <div className="flex items-center gap-3">
           {thumbPreview ? (
             <img
               src={thumbPreview}
               alt="Thumb"
-              className="h-20 w-14 rounded-lg object-cover"
+              className="h-24 w-14 rounded-lg object-cover bg-zinc-900"
             />
           ) : (
-            <div className="h-20 w-14 rounded-lg bg-zinc-800" />
+            <div className="h-24 w-14 rounded-lg bg-zinc-800" />
           )}
-          <button
-            type="button"
-            onClick={() => thumbRef.current?.click()}
-            className="rounded-full border border-border px-4 py-2 text-xs font-medium"
-          >
-            Choose image
-          </button>
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => thumbRef.current?.click()}
+              disabled={preparingThumb}
+              className="rounded-full border border-white/[0.08] px-4 py-2 text-xs font-medium disabled:opacity-50"
+            >
+              Replace image
+            </button>
+            {thumbSize && (
+              <span className="text-[11px] text-muted">{thumbSize}</span>
+            )}
+          </div>
           <input
             ref={thumbRef}
             type="file"
@@ -220,18 +262,15 @@ export default function UploadPage() {
 
       {/* Title */}
       <div className="mb-4">
-        <label className="text-xs font-medium text-muted mb-1.5 block">
-          Title
-        </label>
+        <label className="text-xs font-medium text-muted mb-1.5 block">Title</label>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Give your video a catchy title"
-          className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+          className="w-full rounded-xl border border-white/[0.08] bg-surface px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
         />
       </div>
 
-      {/* Description */}
       <div className="mb-4">
         <label className="text-xs font-medium text-muted mb-1.5 block">
           Description
@@ -240,11 +279,10 @@ export default function UploadPage() {
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Tell viewers what this is about…"
-          className="w-full min-h-[80px] rounded-xl border border-border bg-card px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+          className="w-full min-h-[80px] rounded-xl border border-white/[0.08] bg-surface px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
         />
       </div>
 
-      {/* Category */}
       <div className="mb-6">
         <label className="text-xs font-medium text-muted mb-2 flex items-center gap-1">
           <Tag className="h-3.5 w-3.5" /> Category
@@ -259,7 +297,7 @@ export default function UploadPage() {
                 "rounded-full px-3 py-1.5 text-xs font-medium capitalize transition-colors",
                 category === cat
                   ? "bg-primary text-white"
-                  : "bg-card border border-border text-muted"
+                  : "bg-surface border border-white/[0.08] text-muted"
               )}
             >
               {cat}
@@ -268,8 +306,7 @@ export default function UploadPage() {
         </div>
       </div>
 
-      {/* AI toggle */}
-      <div className="mb-6 flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3">
+      <div className="mb-6 flex items-center justify-between rounded-2xl border border-white/[0.08] bg-surface px-4 py-3">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" />
           <span className="text-sm font-medium">AI Generated</span>
@@ -299,8 +336,8 @@ export default function UploadPage() {
 
       <button
         onClick={handlePublish}
-        disabled={uploading || !title.trim() || !videoFile}
-        className="w-full rounded-2xl bg-primary py-3.5 text-sm font-semibold text-white disabled:opacity-40 flex items-center justify-center gap-2"
+        disabled={uploading || preparingThumb || !title.trim() || !videoFile || !thumbFile}
+        className="w-full rounded-full bg-primary py-3.5 shadow-lg shadow-primary/25 text-sm font-semibold text-white disabled:opacity-40 flex items-center justify-center gap-2"
       >
         {uploading ? (
           <>
@@ -311,6 +348,10 @@ export default function UploadPage() {
           "Publish & Start Earning"
         )}
       </button>
+
+      <p className="mt-3 text-center text-[11px] text-muted">
+        Feed shows a static image only — no autoplay, no sound.
+      </p>
     </div>
   );
 }

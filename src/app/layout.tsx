@@ -1,25 +1,26 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Sora, Inter } from "next/font/google";
 import "./globals.css";
 import { BottomNav } from "@/components/BottomNav";
 import { DesktopSidebar } from "@/components/DesktopSidebar";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const sora = Sora({
+  variable: "--font-sora",
   subsets: ["latin"],
+  weight: ["500", "600", "700", "800"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
   title: "Peeny – AI Video for African Creators",
   description:
-    "Create, share and earn from AI videos & animations. Built for African creators. Powered by Solana.",
-  manifest: "/manifest.json",
+    "Create, share and earn from AI videos & animations. Built for African creators.",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -32,7 +33,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#000000",
+  themeColor: "#0D0B10",
   viewportFit: "cover",
 };
 
@@ -44,9 +45,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${sora.variable} ${inter.variable} h-full antialiased`}
     >
-      <body className="h-full bg-black text-foreground">
+      <body className="h-full bg-background text-foreground font-sans">
         <AuthProvider>
           <div className="flex h-full min-h-[100dvh]">
             <DesktopSidebar />

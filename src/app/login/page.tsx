@@ -16,7 +16,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
   const supabase = createClient();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -24,7 +23,6 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     setMessage(null);
-
     try {
       if (mode === "magic") {
         const { error } = await supabase.auth.signInWithOtp({
@@ -47,7 +45,7 @@ export default function LoginPage() {
           },
         });
         if (error) throw error;
-        setMessage("Account created. Check your email to confirm, or log in.");
+        setMessage("Account created. Check email or log in.");
         setMode("login");
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -66,20 +64,21 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center bg-black px-4">
+    <div className="min-h-[100dvh] flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-white text-xl font-bold mb-3">
+          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-white text-2xl font-display font-bold mb-4 shadow-xl shadow-primary/30">
             P
           </div>
-          <h1 className="text-2xl font-bold text-white">Peeny</h1>
+          <h1 className="text-3xl font-display font-bold text-foreground">
+            Peeny
+          </h1>
           <p className="text-sm text-muted mt-1">
             AI video for African creators
           </p>
         </div>
 
-        {/* Mode tabs */}
-        <div className="flex rounded-xl bg-zinc-900 p-1 mb-6">
+        <div className="flex rounded-full glass p-1 mb-6">
           {(["login", "signup", "magic"] as Mode[]).map((m) => (
             <button
               key={m}
@@ -89,13 +88,13 @@ export default function LoginPage() {
                 setMessage(null);
               }}
               className={cn(
-                "flex-1 rounded-lg py-2 text-sm font-medium capitalize transition-colors",
+                "flex-1 rounded-full py-2 text-sm font-semibold capitalize transition-colors",
                 mode === m
-                  ? "bg-primary text-white"
-                  : "text-muted hover:text-white"
+                  ? "bg-primary text-white shadow-md shadow-primary/20"
+                  : "text-muted hover:text-foreground"
               )}
             >
-              {m === "magic" ? "Magic link" : m}
+              {m === "magic" ? "Magic" : m}
             </button>
           ))}
         </div>
@@ -103,31 +102,35 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === "signup" && (
             <div>
-              <label className="text-xs text-muted mb-1.5 block">Username</label>
+              <label className="text-xs text-muted mb-1.5 block font-medium">
+                Username
+              </label>
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="yourname"
-                className="w-full rounded-xl border border-white/10 bg-zinc-900 px-4 py-3 text-sm text-white placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/50"
+                className="w-full rounded-xl border border-white/[0.08] bg-surface px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>
           )}
-
           <div>
-            <label className="text-xs text-muted mb-1.5 block">Email</label>
+            <label className="text-xs text-muted mb-1.5 block font-medium">
+              Email
+            </label>
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@email.com"
-              className="w-full rounded-xl border border-white/10 bg-zinc-900 px-4 py-3 text-sm text-white placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/50"
+              className="w-full rounded-xl border border-white/[0.08] bg-surface px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
             />
           </div>
-
           {mode !== "magic" && (
             <div>
-              <label className="text-xs text-muted mb-1.5 block">Password</label>
+              <label className="text-xs text-muted mb-1.5 block font-medium">
+                Password
+              </label>
               <input
                 type="password"
                 required
@@ -135,26 +138,24 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full rounded-xl border border-white/10 bg-zinc-900 px-4 py-3 text-sm text-white placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/50"
+                className="w-full rounded-xl border border-white/[0.08] bg-surface px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>
           )}
-
           {error && (
-            <p className="text-sm text-red-400 bg-red-400/10 rounded-lg px-3 py-2">
+            <p className="text-sm text-danger bg-danger/10 rounded-xl px-3 py-2">
               {error}
             </p>
           )}
           {message && (
-            <p className="text-sm text-success bg-success/10 rounded-lg px-3 py-2">
+            <p className="text-sm text-mint bg-mint/10 rounded-xl px-3 py-2">
               {message}
             </p>
           )}
-
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50 hover:bg-primary/90 transition-colors"
+            className="w-full rounded-full bg-primary py-3.5 text-sm font-semibold text-white disabled:opacity-50 shadow-lg shadow-primary/25"
           >
             {loading
               ? "Please wait…"
@@ -165,10 +166,6 @@ export default function LoginPage() {
                   : "Send magic link"}
           </button>
         </form>
-
-        <p className="mt-6 text-center text-xs text-muted">
-          By continuing you agree to Peeny&apos;s terms.
-        </p>
       </div>
     </div>
   );
